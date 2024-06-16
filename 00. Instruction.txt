@@ -1,0 +1,31 @@
+------------------Please proced as per below sequence----------
+
+Step-1:  01. SOME_BASIC_FUNCTION.txt
+Step-2:  02. Tables.txt
+Step-3:  Upload the excel data in tables created (Row Number: 2)
+Step-4:  Declare CurrenBank, CurrentBranch and CurrentDate in TREASURY_APPCONFIG
+Step-5:  03. ID_ACCOUNTS.txt run in ABABIL Schema and Take the insert script as mentioned and then run in Treasury schema.
+Step-6:  GET THE PRODUCTS FROM CONV_ACCOUNTS AND ENTER THEM TO TREASURY PRODUCT TABLE
+Step-7:  RUN THE FOLLOWING SCRIPT
+         --------------UPDATE CONV_ACCOUNTS C SET C.BANK_SWIFT_CODE = 'UBLDBDDH' WHERE C.BANK_SWIFT_CODE is null;----------------
+Step-8:  RUN THE FOLLOWING SCRIPT 
+----------------------------------------------------------------------------------------------------------------------------------
+         SET DEFINE OFF;
+Insert into CONV_TREASURY_BRANCHS
+   (ADDRESS, BRANCHCODE, BRANCHTYPE, CBBRANCHCODE, NAME, 
+    SWIFTCODE, CBSBRANCHID)
+ Values
+   ('Union Bank Ltd.', 265270846, 'GENERAL', '265270846', 'ELEPHANT ROAD BRANCH', 
+    'UBLDBDDH', 94);
+Insert into CONV_TREASURY_BRANCHS
+   (ADDRESS, BRANCHCODE, BRANCHTYPE, CBBRANCHCODE, NAME, 
+    SWIFTCODE, CBSBRANCHID)
+ Values
+   ('Union Bank Ltd.', 265271090, 'GENERAL', '265271090', 'BIJOYNAGAR BRANCH', 
+    'UBLDBDDH', 101);
+COMMIT;
+------------------------------------------------------------------------------------------------------------------------		 
+Step-9:  04. DATA_CONVERSION.txt
+Step-10:  05. Execution.txt
+Step-11: Core to Treasury Connection, Views and Package Creation and Changes
+------------------------------------------------------------------------------------------------------------------------

@@ -1,0 +1,13 @@
+ 
+ GL_TXN_CORE 
+       DO_GL_TXN();
+ 
+ 
+ 
+ 
+ IF PGLDINITIATOR NOT IN ('ATM','WEB','POS','MOBILE','SMS','EFT','BACPS','API','RTGS','APPS','TREASURY') THEN
+    BRANCH_MGMT.CHECK_BRANCH_TXNSTATUS(PGLDTBRANCHID , TRUE);
+	
+	
+-----------------------------------------------------------------------------------------------------------------------	
+	

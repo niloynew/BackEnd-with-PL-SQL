@@ -1,0 +1,9 @@
+DECLARE 
+  PDATE DATE;
+
+BEGIN 
+  PDATE := '12-Aug-20'; --- Conversion date
+
+  DATA_CONVERSION.CONV_DATA ( PDATE );
+  COMMIT; 
+END; 

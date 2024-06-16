@@ -1,0 +1,51 @@
+PROCEDURE CHECK_ACCOUNT (PACCNO        IN     VARCHAR2,
+                            PNAME            OUT VARCHAR2,
+                            PHOMEBRANCH      OUT NUMBER,
+                            PEXIST           OUT NUMBER,
+                            PSTATUS          OUT VARCHAR2);
+
+
+
+
+
+
+PROCEDURE CHECK_ACCOUNT (PACCNO        IN     VARCHAR2,
+                            PNAME            OUT VARCHAR2,
+                            PHOMEBRANCH      OUT NUMBER,
+                            PEXIST           OUT NUMBER,
+                            PSTATUS          OUT VARCHAR2)
+   IS
+      VNAME     VARCHAR2 (500);
+      VBRANCH   NUMBER;
+      VSTATUS   VARCHAR2 (500);
+   BEGIN
+      BEGIN
+         SELECT ACCNAME, ACCBID, ACCSTATE
+           INTO VNAME, VBRANCH, VSTATUS
+           FROM (SELECT ACCNAME, ACCBID, ACCSTATE
+                   FROM ACCOUNT A
+                  WHERE A.ACCCODE = PACCNO
+                 UNION ALL
+                 SELECT ACCNAME, ACCBRID, ACCSTATUS
+                   FROM SSP_ACCOUNT A
+                  WHERE A.ACCNO = PACCNO);
+      EXCEPTION
+         WHEN NO_DATA_FOUND
+         THEN
+            NULL;
+      END;
+
+
+      IF VNAME IS NOT NULL
+      THEN
+         PEXIST := 1;
+         PNAME := VNAME;
+         PHOMEBRANCH := VBRANCH;
+         PSTATUS := VSTATUS;
+      ELSE
+         PEXIST := 2;
+         PNAME := NULL;
+         PHOMEBRANCH := NULL;
+      END IF;
+   END;
+END;

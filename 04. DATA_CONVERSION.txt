@@ -1,0 +1,362 @@
+---------------------------Run in Treasury Schema-----------
+
+CREATE OR REPLACE PACKAGE DATA_CONVERSION
+AS
+   FUNCTION GET_INSTITUTE_ID (PSWIFT VARCHAR2)
+      RETURN NUMBER;
+
+   FUNCTION GET_BRANCH_ID (PBRANCHID VARCHAR2)
+      RETURN NUMBER;
+
+   FUNCTION GET_CURRENCY_ID (PCURR VARCHAR2)
+      RETURN NUMBER;
+
+   FUNCTION GET_TREASURY_APP_VALUE (PITEM VARCHAR2)
+      RETURN VARCHAR2;
+
+   PROCEDURE CONV_DATA (PDATE DATE);
+END DATA_CONVERSION;
+/
+
+CREATE OR REPLACE PACKAGE BODY DATA_CONVERSION
+AS
+   FUNCTION GET_INSTITUTE_ID (PSWIFT VARCHAR2)
+      RETURN NUMBER
+   AS
+      VINSTITUTE_ID   NUMBER;
+   BEGIN
+      BEGIN
+         SELECT ID
+           INTO VINSTITUTE_ID
+           FROM INSTITUTE T
+          WHERE SWIFTCODE = PSWIFT;
+      EXCEPTION
+         WHEN NO_DATA_FOUND
+         THEN
+            NULL;
+      END;
+
+      RETURN VINSTITUTE_ID;
+   END;
+
+
+
+   FUNCTION GET_BRANCH_ID (PBRANCHID VARCHAR2)
+      RETURN NUMBER
+   AS
+      VBRID   NUMBER;
+   BEGIN
+      BEGIN
+         SELECT ID
+           INTO VBRID
+           FROM TREASURY_BRANCHS
+          WHERE CBBRANCHCODE = PBRANCHID;
+      EXCEPTION
+         WHEN NO_DATA_FOUND
+         THEN
+            NULL;
+      END;
+
+      RETURN VBRID;
+   END;
+
+
+
+   FUNCTION GET_CURRENCY_ID (PCURR VARCHAR2)
+      RETURN NUMBER
+   AS
+      VCURR_ID   NUMBER;
+   BEGIN
+      BEGIN
+         SELECT ID
+           INTO VCURR_ID
+           FROM CURRENCIES
+          WHERE SHORTCODE = PCURR;
+      EXCEPTION
+         WHEN NO_DATA_FOUND
+         THEN
+            VCURR_ID := 1;
+      END;
+
+      RETURN VCURR_ID;
+   END;
+
+
+   FUNCTION GET_TREASURY_APP_VALUE (PITEM VARCHAR2)
+      RETURN VARCHAR2
+   AS
+      VAPP_VALUE   VARCHAR2 (200);
+   BEGIN
+      SELECT VALUE
+        INTO VAPP_VALUE
+        FROM TREASURY_APPCONFIG
+       WHERE UPPER (NAME) = UPPER (PITEM);
+
+      RETURN VAPP_VALUE;
+   END;
+
+   PROCEDURE CONV_INSTITUTION
+   AS
+      VCOUNTRYID    NUMBER;
+      VBANKID       NUMBER;
+      VDISCREMENT   VARCHAR2 (1);
+   BEGIN
+      FOR I IN (SELECT *
+                  FROM CONV_INSTITUTE I
+                 WHERE NOT EXISTS
+                          (SELECT *
+                             FROM INSTITUTE I1
+                            WHERE I1.SWIFTCODE = TRIM (I.SWIFTCODE)))
+      LOOP
+         BEGIN
+            SELECT ID
+              INTO VCOUNTRYID
+              FROM TREASURY_COUNTRIES T
+             WHERE UPPER (T.NAME) = UPPER (I.COUNTRYNAME);
+         EXCEPTION
+            WHEN NO_DATA_FOUND
+            THEN
+               VCOUNTRYID := 1;
+         END;
+
+         VDISCREMENT := 'B';
+
+         VBANKID := SEQ_BANK_ID.NEXTVAL;
+
+         BEGIN
+            INSERT INTO INSTITUTE (DISCRIMINATOR,
+                                   ID,
+                                   INSTITUTETYPES,
+                                   INSTITUTECODE,
+                                   NAME,
+                                   SHORTNAME,
+                                   COUNTRY_ID,
+                                   SWIFTCODE,
+                                   ADDRESS1,
+                                   ADDRESS2)
+                 VALUES (VDISCREMENT,
+                         VBANKID,
+                         I.INSTITUTETYPE,
+                         VBANKID,
+                         TRIM (UPPER (I.BANKNAME)),
+                         I.SHORTNAME,
+                         VCOUNTRYID,
+                         TRIM (I.SWIFTCODE),
+                         I.ADDRESS1,
+                         I.ADDRESS1);
+         EXCEPTION
+            WHEN OTHERS
+            THEN
+               NULL;
+         END;
+      END LOOP;
+   END;
+
+   PROCEDURE CONV_TREASURY_BRANCH
+   AS
+      VBRID   NUMBER;
+   BEGIN
+      FOR BR IN (SELECT *
+                   FROM CONV_TREASURY_BRANCHS B
+                  WHERE     NOT EXISTS
+                               (SELECT *
+                                  FROM TREASURY_BRANCHS B1
+                                 WHERE B1.CBBRANCHCODE = B.CBBRANCHCODE)
+                        AND CBBRANCHCODE IS NOT NULL)
+      LOOP
+         VBRID := SEQ_BRANCH_ID.NEXTVAL;
+
+         BEGIN
+            INSERT INTO TREASURY_BRANCHS (ID,
+                                          BRANCHADDRESS,
+                                          BRANCHCODE,
+                                          BRANCHTYPE,
+                                          CBBRANCHCODE,
+                                          NAME,
+                                          INSTITUTEID,
+                                          CBSBRID)
+                 VALUES (VBRID,
+                         BR.ADDRESS,
+                         VBRID,
+                         BR.BRANCHTYPE,
+                         BR.CBBRANCHCODE,
+                         TRIM (UPPER (BR.NAME)),
+                         GET_INSTITUTE_ID (BR.SWIFTCODE),
+                         NULL);
+         EXCEPTION
+            WHEN OTHERS
+            THEN
+               NULL;
+         END;
+      END LOOP;
+   END;
+
+   PROCEDURE CONV_ID_ACCOUNT
+   AS
+      VACCID       NUMBER;
+      VPRODID      NUMBER;
+      VCURR_DATE   DATE;
+      VST_DATE     DATE;
+      VPRODUCT     NUMBER;
+   BEGIN
+      FOR ID IN (SELECT *
+                   FROM CONV_ID_ACCOUNTS A
+                  WHERE NOT EXISTS
+                           (SELECT *
+                              FROM ACCOUNTS A1
+                             WHERE A1.ACCNO = A.ACCNO))
+      LOOP
+         BEGIN
+            SELECT ID
+              INTO VPRODID
+              FROM TREASURYPRODUCT T
+             WHERE PRODUCTCODE = ID.PROD_ID;
+         EXCEPTION
+            WHEN NO_DATA_FOUND
+            THEN
+               NULL;
+         END;
+
+
+         VACCID := SEQ_ACCOUNT_ID.NEXTVAL;
+
+         BEGIN
+            INSERT INTO ACCOUNTS (DISCRIMINATOR,
+                                  ID,
+                                  NAME,
+                                  ACCNO,
+                                  OPENDATE,
+                                  STATUS,
+                                  ACCOUNTTYPE_ID,
+                                  BANK_ID,
+                                  BRANCH_ID,
+                                  CURRENCY_ID,
+                                  BALANCECCY,
+                                  BALANCELCY,
+                                  NOSTROACCOUNTNUMBER)
+                 VALUES ('M',
+                         VACCID,
+                         TRIM (UPPER (ID.NAME)),
+                         ID.ACCNO,
+                         ID.OPENDATE,
+                         '0',
+                         VPRODID,
+                         GET_TREASURY_APP_VALUE ('CurrentBank'),
+                         GET_TREASURY_APP_VALUE ('TreasuryBranch'),
+                         GET_CURRENCY_ID (ID.CURRENCY_ID),
+                         ID.BALANCECCY,
+                         ID.BALANCELCY,
+                         ID.NOSTROACCOUNTNUMBER);
+         EXCEPTION
+            WHEN OTHERS
+            THEN
+               NULL;
+         END;
+      END LOOP;
+   END;
+
+
+   PROCEDURE CONV_ACCOUNT (PDATE DATE)
+   AS
+      VACCID       NUMBER;
+      VPRODID      NUMBER;
+      VCURR_DATE   DATE;
+      VST_DATE     DATE;
+      VPRODUCT     NUMBER;
+   BEGIN
+      FOR ACC IN (SELECT *
+                    FROM CONV_ACCOUNTS A
+                   WHERE NOT EXISTS
+                            (SELECT *
+                               FROM ACCOUNTS A1
+                              WHERE A1.ACCNO = A.ACCNO))
+      LOOP
+         BEGIN
+            SELECT ID
+              INTO VPRODID
+              FROM TREASURYPRODUCT T
+             WHERE PRODUCTCODE = ACC.PRODUCT_CODE;
+         EXCEPTION
+            WHEN NO_DATA_FOUND
+            THEN
+               NULL;
+         END;
+
+
+         VACCID := SEQ_ACCOUNT_ID.NEXTVAL;
+
+         VCURR_DATE := PDATE;
+
+         SELECT LAST_DAY (ADD_MONTHS (VCURR_DATE, -1)) + 1
+           INTO VST_DATE
+           FROM DUAL;
+
+         VPRODUCT :=
+              ( (TO_DATE (VCURR_DATE) - TO_DATE (VST_DATE)) + 1)
+            * ACC.PRINCIPAL;
+
+         BEGIN
+            INSERT INTO ACCOUNTS (DISCRIMINATOR,
+                                  ID,
+                                  NAME,
+                                  ACCNO,
+                                  OPENDATE,
+                                  STATUS,
+                                  PRODUCT,
+                                  PROFITRATE,
+                                  AUTORENEW,
+                                  EXPIRYDATE,
+                                  PRINCIPAL,
+                                  PROFIT,
+                                  TENURECOUNT,
+                                  TENURETYPE,
+                                  ACCOUNTTYPE_ID,
+                                  BANK_ID,
+                                  BRANCH_ID,
+                                  CURRENCY_ID,
+                                  OWNER_ID,
+                                  OWNERBRANCH_ID,
+                                  BALANCECCY,
+                                  BALANCELCY,
+                                  NOSTROACCOUNTNUMBER)
+                 VALUES (ACC.DISCRIMINATOR,
+                         VACCID,
+                         TRIM (UPPER (ACC.NAME)),
+                         ACC.ACCNO,
+                         ACC.OPENDATE,
+                         ACC.STATUS,
+                         VPRODUCT,
+                         ACC.PROFITRATE,
+                         ACC.AUTORENEW,
+                         ACC.EXPIRYDATE,
+                         ACC.PRINCIPAL,
+                         ACC.PROFIT,
+                         1,
+                         1,
+                         VPRODID,
+                         GET_INSTITUTE_ID (ACC.BANK_SWIFT_CODE),
+                         GET_BRANCH_ID (ACC.BRANCH_ROUTING_NUMBER),
+                         GET_CURRENCY_ID (ACC.CURRENCY_CODE),
+                         GET_INSTITUTE_ID (ACC.OWNER_INSTITUTE_BIC),
+                         GET_BRANCH_ID (ACC.OWNERBRANCH_ROUTING_NUMBER),
+                         ACC.BALANCECCY,
+                         ACC.PRINCIPAL + ACC.PROFIT,
+                         ACC.NOSTROACCOUNTNUMBER);
+         EXCEPTION
+            WHEN OTHERS
+            THEN
+               NULL;
+         END;
+      END LOOP;
+   END;
+
+   PROCEDURE CONV_DATA (PDATE DATE)
+   AS
+   BEGIN
+      CONV_INSTITUTION;
+      CONV_TREASURY_BRANCH;
+      CONV_ID_ACCOUNT;
+      CONV_ACCOUNT (PDATE);
+   END;
+END DATA_CONVERSION;
+/

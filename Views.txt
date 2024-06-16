@@ -1,0 +1,33 @@
+CREATE OR REPLACE FORCE VIEW VW_FE_CURRENCY_RATES
+(
+   CURRENCYRATEID,
+   RATETYPECODE,
+   CODE,
+   RATE
+)
+   BEQUEATH DEFINER
+AS
+     SELECT ROWNUM currencyRateId,
+            CUR_RATE_TYPE_CODE rateTypeId,
+            CUR_CODE code,
+            EXCH_RATE rate
+       FROM FE_CURRENCY_RATES
+   ORDER BY ROWNUM;
+   
+   
+   -----------------------------------------------------------------------------------
+   
+   
+   
+   
+   CREATE OR REPLACE FORCE VIEW VW_FE_RATE_TYPE
+(
+   ID,
+   CODE,
+   RATETYPE
+)
+   BEQUEATH DEFINER
+AS
+     SELECT ROWNUM id, CUR_RATE_TYPE_CODE CODE, CUR_RATE_TYPE_NAME RATE_TYPE
+       FROM FE_CURR_RATE_TYPE
+   ORDER BY CUR_RATE_TYPE_CODE;

@@ -1,0 +1,531 @@
+-------Make sure Schema User branch is 1 while executing Script
+declare
+lproduct varchar2(3);
+vnewacc varchar2(13);
+LACCOUNTID number;
+loldacc number;
+LTXNCODE number;
+LTRBATCHNO varchar2(20);
+lbalance number;
+lglobaltxnno number;
+lbrid number;
+LGLTXNCODE varchar2(40);
+LSP_ID number;
+LPROID number;
+lpayablegl number;
+lpaidgl number;
+LTRDEFID NUMBER; 
+LTRNO NUMBER;
+lprovamt number;
+begin
+for i in (
+select * from acc_transfer_treasury where ACC_TYPE='DEMAND' and new_acc is null)
+
+loop
+----generate account
+select substr(i.OLD_ACC,4,3) into lproduct from acc_transfer_treasury where OLD_ACC=i.OLD_ACC;
+
+      PUBLIC_ACC_MGMT.GENERATE_NEW_ACCNO (
+                                          lproduct,
+                                          vnewacc
+                                          );
+      PUBLIC_ACCOUNT.ACCNOGENARATOR (vnewacc, lproduct);
+   ---------create account
+   SELECT SQ_DEP_ACC_ID.NEXTVAL INTO LACCOUNTID FROM DUAL; 
+   select ACCID,ACCCURRENTBALANCE,ACCBID into loldacc,lbalance,lbrid from account where ACCCODE=i.OLD_ACC;
+   lglobaltxnno := get_globaltxnno;
+ for j in (  
+ select  ACCBID, ACCCUID, ACCATID, 
+   ACCID, ACCCODE, ACCNAME, 
+   ACCSTATE, ACCCURRENCY, ACCSIGINSTRUCTION, 
+   ACCOTHERINSTRUCTION, ACCOPENDATE, ACCCLOSINGDATE, 
+   ACCLASTOPERATIONDATE, ACCSPECIALPROFITRATE, ACCPROFITRATIO, 
+   ACCSTATEMENTFREQUENCY, ACCSTATEMENTADDRESS1, ACCSTATEMENTADDRESS2, 
+   ACCSTATEMENTADDRESS3, ACCINFANTOPARATEBY, ACCINFANTRELATION, 
+   ACCINTRODUCERACCID, HASINSTRUCTION, ACCISSTAFF, 
+   ACCOVERDRAFTLIMIT, ACCLIENAMOUNT, ACCCURRENTBALANCE, 
+   ACCBLOCKAMOUNT, ACCCLEARINGAMOUNT, ACCISICDEDUCTABLE, 
+   ACCISEDDEDUCTABLE, ACCISPROFITTAXABLE, ACCNEVERUSEPROFIT, 
+   ACCNUMDEBITTRANSACTION, ACCISDORMANT, ACCNOCAWITH, 
+   ACCNOCADEP, ACCNOTXN, ACCNOCHQWITH, 
+   ACCNOTXFERWITH, ACCNOTXFERDEP, SETUP_USERID, 
+   SETUP_DATETIME, VERIFY_USERID, VERIFY_DATETIME, 
+   ACCISSPECIALRATE, ACCCODEOLD, ACC_REL_OFFICER_ID, 
+   ACCLASTCRIENTTXNDATE, ACCOTHERINTROACC, ACCOTHERINTROACCNAME, 
+   WIND_BRANCH_ID, ACCNOWITHDRAW, ACCNOCAWITH_ONLINE, 
+   ACCNOCADEP_ONLINE from account where  ACCCODE=i.OLD_ACC)
+   
+   loop
+   
+   insert into account (ACCBID, ACCCUID, ACCATID, 
+   ACCID, ACCCODE, ACCNAME, 
+   ACCSTATE, ACCCURRENCY, ACCSIGINSTRUCTION, 
+   ACCOTHERINSTRUCTION, ACCOPENDATE, ACCCLOSINGDATE, 
+   ACCLASTOPERATIONDATE, ACCSPECIALPROFITRATE, ACCPROFITRATIO, 
+   ACCSTATEMENTFREQUENCY, ACCSTATEMENTADDRESS1, ACCSTATEMENTADDRESS2, 
+   ACCSTATEMENTADDRESS3, ACCINFANTOPARATEBY, ACCINFANTRELATION, 
+   ACCINTRODUCERACCID, HASINSTRUCTION, ACCISSTAFF, 
+   ACCOVERDRAFTLIMIT, ACCLIENAMOUNT, ACCCURRENTBALANCE, 
+   ACCBLOCKAMOUNT, ACCCLEARINGAMOUNT, ACCISICDEDUCTABLE, 
+   ACCISEDDEDUCTABLE, ACCISPROFITTAXABLE, ACCNEVERUSEPROFIT, 
+   ACCNUMDEBITTRANSACTION, ACCISDORMANT, ACCNOCAWITH, 
+   ACCNOCADEP, ACCNOTXN, ACCNOCHQWITH, 
+   ACCNOTXFERWITH, ACCNOTXFERDEP, SETUP_USERID, 
+   SETUP_DATETIME, VERIFY_USERID, VERIFY_DATETIME, 
+   ACCISSPECIALRATE, ACCCODEOLD, ACC_REL_OFFICER_ID, 
+   ACCLASTCRIENTTXNDATE, ACCOTHERINTROACC,ACCOTHERINTROACCNAME, 
+   WIND_BRANCH_ID, ACCNOWITHDRAW, ACCNOCAWITH_ONLINE, 
+   ACCNOCADEP_ONLINE)
+   values
+   (
+   1,j.ACCCUID,j.ACCATID,
+   LACCOUNTID,vnewacc,j.ACCNAME,
+   j.ACCSTATE, j.ACCCURRENCY, j.ACCSIGINSTRUCTION,
+   j.ACCOTHERINSTRUCTION, get_current_date, j.ACCCLOSINGDATE,
+   get_current_date,j.ACCSPECIALPROFITRATE, j.ACCPROFITRATIO,
+   j.ACCSTATEMENTFREQUENCY, j.ACCSTATEMENTADDRESS1, j.ACCSTATEMENTADDRESS2,
+   j.ACCSTATEMENTADDRESS3, j.ACCINFANTOPARATEBY, j.ACCINFANTRELATION,
+   j.ACCINTRODUCERACCID, j.HASINSTRUCTION, j.ACCISSTAFF,
+   j.ACCOVERDRAFTLIMIT, j.ACCLIENAMOUNT, 0,
+   j.ACCBLOCKAMOUNT, j.ACCCLEARINGAMOUNT, j.ACCISICDEDUCTABLE,
+   j.ACCISEDDEDUCTABLE, j.ACCISPROFITTAXABLE, j.ACCNEVERUSEPROFIT,
+   j.ACCNUMDEBITTRANSACTION, j.ACCISDORMANT, j.ACCNOCAWITH,
+   j.ACCNOCADEP, j.ACCNOTXN, j.ACCNOCHQWITH,
+   j.ACCNOTXFERWITH, j.ACCNOTXFERDEP, 'system',
+   sysdate, 'system', sysdate,
+   j.ACCISSPECIALRATE, j.ACCCODEOLD, j.ACC_REL_OFFICER_ID,
+   null, j.ACCOTHERINTROACC, j.ACCOTHERINTROACCNAME,
+   j.WIND_BRANCH_ID, j.ACCNOWITHDRAW, j.ACCNOCAWITH_ONLINE,
+   j.ACCNOCADEP_ONLINE
+   );
+   
+   end loop;
+   
+   -----daily product 
+   for j in (
+   select ACCID, ACCPRODUCT, ACCHALFYEARLYPRODUCT, 
+   ACCMINBALANCEOFMONTH, ACCMINBALANCEOFHALFYEAR, ACCMAXBALANCEOFYEAR, 
+   ACCPREVDAYBALANCE, ACCWEEKDRTR, ACCMONTHDRTR, 
+   ACCISPROFITPOSTABLE, ACCWEEKRULEVIOLATED, ACCMONTHRULEVIOLATED, 
+   ACCATID, ACCBID, ACCFRACBALVIOLATED, 
+   ACCMINBALRULEVIOLATED, ACCTRCLOSINGBALANCE, ACCPRODUCTRESETDATE, 
+   ACCPRODUCTBACKUP from account_product where ACCID=loldacc)
+   
+   loop
+   insert into account_product (ACCID, ACCPRODUCT, ACCHALFYEARLYPRODUCT, 
+   ACCMINBALANCEOFMONTH, ACCMINBALANCEOFHALFYEAR, ACCMAXBALANCEOFYEAR, 
+   ACCPREVDAYBALANCE, ACCWEEKDRTR, ACCMONTHDRTR, 
+   ACCISPROFITPOSTABLE, ACCWEEKRULEVIOLATED, ACCMONTHRULEVIOLATED, 
+   ACCATID, ACCBID, ACCFRACBALVIOLATED, 
+   ACCMINBALRULEVIOLATED, ACCTRCLOSINGBALANCE, ACCPRODUCTRESETDATE, 
+   ACCPRODUCTBACKUP)
+   values 
+   (
+   LACCOUNTID,j.ACCPRODUCT, j.ACCHALFYEARLYPRODUCT,
+   j.ACCMINBALANCEOFMONTH, j.ACCMINBALANCEOFHALFYEAR, j.ACCMAXBALANCEOFYEAR, 
+   j.ACCPREVDAYBALANCE, j.ACCWEEKDRTR, j.ACCMONTHDRTR,
+   j.ACCISPROFITPOSTABLE, j.ACCWEEKRULEVIOLATED, j.ACCMONTHRULEVIOLATED,
+   j.ACCATID, 1, j.ACCFRACBALVIOLATED,
+   j.ACCMINBALRULEVIOLATED, j.ACCTRCLOSINGBALANCE, j.ACCPRODUCTRESETDATE,
+   j.ACCPRODUCTBACKUP
+   );
+    end loop;
+    
+    -----special rate
+    for j in (
+    select a.ACC_TYPE, a.ACC_ID, a.ISSPECIAL_PROFIT_RATE, 
+   a.SPECIAL_PROFIT_RATE, a.SETUP_USERID, a.SETUP_DATETIME, 
+   a.SETUP_OSUSER, a.SETUP_TERMINAL, a.SETUP_USER_BRID, 
+   a.VERIFY_USERID, a.VERIFY_DATETIME, a.VERIFY_OSUSER, 
+   a.VERIFY_TERMINAL, a.VERIFY_USER_BRID from ACCWISE_SPECIAL_PROFITRATE a,account b
+   where ACC_ID=loldacc and ACC_ID=ACCID and ACC_TYPE='DEPOSIT' and ACCSPECIALPROFITRATE=SPECIAL_PROFIT_RATE)
+   loop
+   insert into ACCWISE_SPECIAL_PROFITRATE 
+   (ACC_TYPE, ACC_ID, ISSPECIAL_PROFIT_RATE, 
+   SPECIAL_PROFIT_RATE, SETUP_USERID, SETUP_DATETIME, 
+   SETUP_OSUSER, SETUP_TERMINAL, SETUP_USER_BRID, 
+   VERIFY_USERID, VERIFY_DATETIME, VERIFY_OSUSER, 
+   VERIFY_TERMINAL, VERIFY_USER_BRID)
+   values
+   (
+   j.ACC_TYPE,LACCOUNTID,j.ISSPECIAL_PROFIT_RATE,
+   j.SPECIAL_PROFIT_RATE,'system',sysdate,
+   null,null,1,
+   'system',sysdate,null,
+   null,1
+   );
+   
+   
+   end loop;
+   
+   -----image and signature
+   
+   for j in (select * from ublimg010320.image where IMGACCCODE=i.old_acc)
+   loop
+   insert into ublimg010320.image (IMGACCCODE, IMGOBJECT, IMGSERIAL, 
+   IMGPKEY_ID, IMGACCCODE_TYPE, IMGIMAGE_TYPE, 
+   IMGREC_STATUS, IMGCHANGE_TYPE, SETUPUSERID, 
+   SETUPDATETIME, VERIFYUSERID, VERIFYDATETIME, 
+   IMGNAME, IMGHOSTBRID)
+   values
+   (
+   vnewacc, j.IMGOBJECT, j.IMGSERIAL, 
+   IMAGE_SQ.NEXTVAL, j.IMGACCCODE_TYPE, j.IMGIMAGE_TYPE, 
+   j.IMGREC_STATUS, j.IMGCHANGE_TYPE, 'system', 
+   sysdate, 'system', sysdate, 
+   j.IMGNAME, 1
+   );
+   
+   end loop;
+   -----sms notification
+   for j in (
+   select * from ntfy_client_cf where CLIENT_ID=i.old_acc
+   )
+   loop
+   insert into ntfy_client_cf (ID, CLIENT_ID, MOBILE_NO, 
+   EMAIL, NTFY_TYPE_ID, SMS_NTFY_YN, 
+   EMAIL_NTFY_YN, ACTIVE_DATE, EXPIRE_DATE, 
+   STATUS, CREATED_USER, CREATED_TIME, 
+   VERIFY_USER, VERIFY_TIME)
+   values 
+   (
+   (SELECT   NVL (MAX (ID), 0) + 1 FROM ntfy_client_cf),vnewacc,j.MOBILE_NO,
+   j.EMAIL, j.NTFY_TYPE_ID, j.SMS_NTFY_YN, 
+   j.EMAIL_NTFY_YN, j.ACTIVE_DATE, j.EXPIRE_DATE, 
+   j.STATUS, 'system', sysdate, 
+   'system', sysdate
+   );
+   end loop;
+   
+   for j in (
+   select * from SMS_ALERT_DETAILS where ACCID=loldacc
+   )
+   
+   loop
+   insert into SMS_ALERT_DETAILS (RECORDID, ACCID, MOBILE_NO, 
+   ALERT_ACTIVE_DATE, CASH_CR_AMT, CASH_DR_AMT, 
+   TRAN_CR_AMT, TRAN_DR_AMT, CLEAR_CR_AMT, 
+   CLEAR_DR_AMT, ATM_CR_AMT, ATM_DR_AMT, 
+   POS_CR_AMT, POS_DR_AMT, REC_UP_DATE, 
+   SETUP_USER_ID, SETUP_DATE, VERIFY_USER_ID, 
+   VERIFY_DATE, REC_UP_USER)
+   values
+   (
+   SQ_RECORDID.NEXTVAL,LACCOUNTID,j.MOBILE_NO,
+   j.ALERT_ACTIVE_DATE, j.CASH_CR_AMT, j.CASH_DR_AMT,
+   j.TRAN_CR_AMT, j.TRAN_DR_AMT, j.CLEAR_CR_AMT,
+   j.CLEAR_DR_AMT, j.ATM_CR_AMT, j.ATM_DR_AMT,
+   j.POS_CR_AMT, j.POS_DR_AMT, j.REC_UP_DATE,
+   'system', sysdate, 'system',
+   sysdate,null
+   );
+   
+   end loop;
+   
+   
+   
+   
+   
+     -----create kyc
+     
+   for j in (
+   select PROF_CUST_ID, PROF_ACC_NO, PROF_FUND_SOURCE, 
+   PROF_BUSINESS_RELATIONSHIP, PROF_ACC_ACTUAL_OWNER, PROF_ACC_AGENT_NAME, 
+   PROF_IS_ACTUAL_ID_OBTAINED, PROF_IS_NRB, PROF_BRB_ACC_REASON, 
+   PROF_NRB_VISA_TYPE, PROF_CUST_OCCUPATION_ID, PROF_CUST_TURNOVER_ID, 
+   PROF_ACC_OPENING_MODE, PROF_MONTH_TXN_AMT_ID, PROF_MONTH_TXN_NO_ID, 
+   PROF_MONTH_CASH_TXN_AMT_ID, PROF_MONTH_CASH_TXN_NO_ID, PROF_RISK_ASSESSMENT, 
+   PROF_COMMENTS, REC_STATUS, SETUP_USERID, 
+   SETUP_DATETIME, VERIFY_USERID, VERIFY_DATETIME from KYC_PROFILE_DETAILS 
+   where PROF_ACC_NO=i.OLD_ACC
+   )
+   
+   loop
+   insert into KYC_PROFILE_DETAILS (PROF_CUST_ID, PROF_ACC_NO, PROF_FUND_SOURCE, 
+   PROF_BUSINESS_RELATIONSHIP, PROF_ACC_ACTUAL_OWNER, PROF_ACC_AGENT_NAME, 
+   PROF_IS_ACTUAL_ID_OBTAINED, PROF_IS_NRB, PROF_BRB_ACC_REASON, 
+   PROF_NRB_VISA_TYPE, PROF_CUST_OCCUPATION_ID, PROF_CUST_TURNOVER_ID, 
+   PROF_ACC_OPENING_MODE, PROF_MONTH_TXN_AMT_ID, PROF_MONTH_TXN_NO_ID, 
+   PROF_MONTH_CASH_TXN_AMT_ID, PROF_MONTH_CASH_TXN_NO_ID, PROF_RISK_ASSESSMENT, 
+   PROF_COMMENTS, REC_STATUS, SETUP_USERID, 
+   SETUP_DATETIME, VERIFY_USERID, VERIFY_DATETIME)
+   values
+   
+   (
+   j.PROF_CUST_ID,vnewacc,j.PROF_FUND_SOURCE,
+   j.PROF_BUSINESS_RELATIONSHIP, j.PROF_ACC_ACTUAL_OWNER, j.PROF_ACC_AGENT_NAME,
+   j.PROF_IS_ACTUAL_ID_OBTAINED, j.PROF_IS_NRB, j.PROF_BRB_ACC_REASON,
+   j.PROF_NRB_VISA_TYPE, j.PROF_CUST_OCCUPATION_ID, j.PROF_CUST_TURNOVER_ID,
+   j.PROF_ACC_OPENING_MODE, j.PROF_MONTH_TXN_AMT_ID, j.PROF_MONTH_TXN_NO_ID,
+   j.PROF_MONTH_CASH_TXN_AMT_ID, j.PROF_MONTH_CASH_TXN_NO_ID, j.PROF_RISK_ASSESSMENT,
+   j.PROF_COMMENTS, j.REC_STATUS, 'system',
+   sysdate, 'system', sysdate
+   );
+   
+   end loop;   
+
+-----create tp
+   for j in (
+   select  ACCID, TXNTPID, MONTH_TXN_DRNO, 
+   MONTH_TXN_CRNO, MONTH_TXN_DRLIMIT, MONTH_TXN_CRLIMIT, 
+   SINGLE_TXN_DRLIMIT, SINGLE_TXN_CRLIMIT, DR_NO, 
+   CR_NO, TOTAL_DR_AMT, TOTAL_CR_AMT, 
+   ISVALIED, DOEXCEED, TXNTPTRTRDID, 
+   STOPTXN_ONVIOLATION, CREATEDBY, MODIFIEDBY, 
+   CREATEDATE, MODIFIEDDATE, CREATETERMINAL, 
+   MODIFIEDTERMINAL, IS_VIOLATED from ACCTXNLIMIT 
+   where ACCID=loldacc)
+   
+   loop
+   
+   insert into ACCTXNLIMIT (ACCID, TXNTPID, MONTH_TXN_DRNO, 
+   MONTH_TXN_CRNO, MONTH_TXN_DRLIMIT, MONTH_TXN_CRLIMIT, 
+   SINGLE_TXN_DRLIMIT, SINGLE_TXN_CRLIMIT, DR_NO, 
+   CR_NO, TOTAL_DR_AMT, TOTAL_CR_AMT, 
+   ISVALIED, DOEXCEED, TXNTPTRTRDID, 
+   STOPTXN_ONVIOLATION, CREATEDBY, MODIFIEDBY, 
+   CREATEDATE, MODIFIEDDATE, CREATETERMINAL, 
+   MODIFIEDTERMINAL, IS_VIOLATED)
+   values
+   
+   (
+   LACCOUNTID,j.TXNTPID, j.MONTH_TXN_DRNO,
+   j.MONTH_TXN_CRNO, j.MONTH_TXN_DRLIMIT, j.MONTH_TXN_CRLIMIT,
+   j.SINGLE_TXN_DRLIMIT, j.SINGLE_TXN_CRLIMIT, j.DR_NO,
+   j.CR_NO, j.TOTAL_DR_AMT, j.TOTAL_CR_AMT,
+   j.ISVALIED, j.DOEXCEED, j.TXNTPTRTRDID,
+   j.STOPTXN_ONVIOLATION, 'system', null,
+   sysdate, null, null,
+   null, j.IS_VIOLATED
+   );
+   
+   end loop;
+   
+----balance transfer
+/*DEP_TXN_CORE.TRANSFER_DEBIT(LTRBATCHNO,'220021' ,i.OLD_ACC , '','' ,'','Account Closed and Amount Transferred to '||vnewacc,
+      lbalance, 'SYSTEM',4 , 'DEPOSIT' , lglobaltxnno, LTXNCODE , lbrid,1,
+      'SYSTEM', null,null,SYSDATE,'SYSTEM', null,
+      null,LGLTXNCODE);*/
+      
+ All_Txn_Core.Do_Transaction( LTRBATCHNO,lbrid,1,
+                           'False','209' ,i.OLD_ACC ,'MGT',
+                           ''
+                          ,'Account Closed and Amount Transferred to '||vnewacc,lbalance , lglobaltxnno ,'DEPOSIT' ,'SYSTEM' ,null ,null ,SYSDATE ,
+                          'SYSTEM' ,null ,null,
+                          LTXNCODE,null, get_current_date,0, null,
+                          0, null
+                           );      
+      
+  All_Txn_Core.Do_Transaction( LTRBATCHNO,1,1,
+                           'False','210' ,vnewacc ,'MGT',
+                           ''
+                          ,'Amount Transferred From '||i.OLD_ACC,lbalance , lglobaltxnno ,'DEPOSIT' ,'SYSTEM' ,null ,null ,SYSDATE ,
+                          'SYSTEM' ,null ,null,
+                          LTXNCODE,null, get_current_date,0, null,
+                          0, null
+                           );     
+      
+/*DEP_TXN_CORE.TRANSFER_CREDIT(LTRBATCHNO,'120006' ,vnewacc , '','' ,'','Amount Transferred From '||i.OLD_ACC,
+      lbalance, 'SYSTEM',4 , 'DEPOSIT' , lglobaltxnno, LTXNCODE , 1,1,
+      'SYSTEM', null,null,SYSDATE,'SYSTEM', null,
+      null,LGLTXNCODE);  */
+      
+      ----product transfer
+      for j in
+      (select SP_ID, SP_ACCID, SP_YEAR, 
+   SP_MONTH, SP_INSERT_DATE, SP_PRODUCT, 
+   SP_PROV_RATE, SP_PROV_PROFIT, SP_GLPOSTED, 
+   SP_GLPOSTING_DATE from slab_product where SP_ACCID=loldacc 
+   and upper(SP_GLPOSTED)='FALSE' and SP_GLPOSTING_DATE is null)
+   loop
+   SELECT SQ_SLAB_PRODUCT.NEXTVAL INTO LSP_ID FROM DUAL;
+   
+   insert into slab_product (SP_ID, SP_ACCID, SP_YEAR, 
+   SP_MONTH, SP_INSERT_DATE, SP_PRODUCT, 
+   SP_PROV_RATE, SP_PROV_PROFIT, SP_GLPOSTED, 
+   SP_GLPOSTING_DATE)
+   values(
+   LSP_ID,LACCOUNTID,j.SP_YEAR,
+   j.SP_MONTH, j.SP_INSERT_DATE, j.SP_PRODUCT,
+   j.SP_PROV_RATE, j.SP_PROV_PROFIT, j.SP_GLPOSTED,
+   j.SP_GLPOSTING_DATE
+   );
+   
+   end loop;
+      
+   for j in
+   (select PROID, PROYEAR, PROACCID, 
+   PROMONTH, PROAMOUNT, PROPROVPROFITAMOUNT, 
+   PPROFITRATE, PROPROVPRODUCT, PTAXAMOUNT, 
+   PRODISACCPOSTED, PRODGLOBALTXNNO, PRODUCTFORVALUEDATEADJUSTMENT, 
+   PROVISIONFORVALUEDATEADJUSTMEN, ISPROFITADJUSTMENT, PRODUCTADJUSTMENTDATE, 
+   PRODUCTGLUPDATEDATE from product where PROACCID=loldacc and upper(PRODISACCPOSTED)='FALSE')
+   
+   loop
+   
+   SELECT TO_NUMBER (SQCODE) + 1
+           INTO LPROID
+           FROM SEQUENCER
+          WHERE SQTYPE = 'PRODUCT';
+
+         UPDATE SEQUENCER
+            SET SQCODE = TO_CHAR (LPROID)
+          WHERE SQTYPE = 'PRODUCT';
+
+   insert into product (PROID, PROYEAR, PROACCID, 
+   PROMONTH, PROAMOUNT, PROPROVPROFITAMOUNT, 
+   PPROFITRATE, PROPROVPRODUCT, PTAXAMOUNT, 
+   PRODISACCPOSTED, PRODGLOBALTXNNO, PRODUCTFORVALUEDATEADJUSTMENT, 
+   PROVISIONFORVALUEDATEADJUSTMEN, ISPROFITADJUSTMENT, PRODUCTADJUSTMENTDATE, 
+   PRODUCTGLUPDATEDATE) values 
+   (
+   LPROID,j.PROYEAR,LACCOUNTID,
+   j.PROMONTH, j.PROAMOUNT, j.PROPROVPROFITAMOUNT,
+   j.PPROFITRATE, j.PROPROVPRODUCT, j.PTAXAMOUNT,
+   j.PRODISACCPOSTED, j.PRODGLOBALTXNNO, j.PRODUCTFORVALUEDATEADJUSTMENT,
+   j.PROVISIONFORVALUEDATEADJUSTMEN, j.ISPROFITADJUSTMENT, j.PRODUCTADJUSTMENTDATE,
+   j.PRODUCTGLUPDATEDATE
+   );
+   
+   
+   end loop;
+          
+  ------provision reversal and create in new branch
+ 
+  select ATPROFITPAYABLEGLID,ATPROFITPAIDGLID into lpayablegl,lpaidgl from accounttype where ATCODE=lproduct;
+  select sum(PROPROVPROFITAMOUNT) into lprovamt from product where proaccid=loldacc and upper(PRODISACCPOSTED)='FALSE';
+  
+          GL_TXN_CORE.DO_COMMON_GL_TXN (0,
+                                       get_current_date,
+                                       lprovamt,
+                                       0,
+                                       lpayablegl,
+                                       'PROVISION REVERSE FOR ACCOUNT:'|| i.OLD_ACC,
+                                       '202',
+                                       1,
+                                       LTRBATCHNO,
+                                       lglobaltxnno,
+                                       '',
+                                       '',
+                                       '',
+                                       LTRDEFID,
+                                       '',
+                                       '',
+                                       lbrid,
+                                       lbrid,
+                                       'GENERALLEDGER',
+                                       'SYSTEM',
+                                       NULL,
+                                       NULL,
+                                       SYSDATE,
+                                       'SYSTEM',
+                                       NULL,
+                                       NULL,
+                                       LTRNO,
+                                       LGLTXNCODE);
+                                       
+      GL_TXN_CORE.DO_COMMON_GL_TXN     (0,
+                                       get_current_date,
+                                       0,
+                                       lprovamt,
+                                       lpaidgl,
+                                       'PROVISION REVERSE FOR ACCOUNT:'|| i.OLD_ACC,
+                                       '102',
+                                       1,
+                                       LTRBATCHNO,
+                                       lglobaltxnno,
+                                       '',
+                                       '',
+                                       '',
+                                       LTRDEFID,
+                                       '',
+                                       '',
+                                       lbrid,
+                                       lbrid,
+                                       'GENERALLEDGER',
+                                       'SYSTEM',
+                                       NULL,
+                                       NULL,
+                                       SYSDATE,
+                                       'SYSTEM',
+                                       NULL,
+                                       NULL,
+                                       LTRNO,
+                                       LGLTXNCODE);
+                                       
+        GL_TXN_CORE.DO_COMMON_GL_TXN   (0,
+                                       get_current_date,
+                                       lprovamt,
+                                       0,
+                                       lpaidgl,
+                                       'PROVISION FOR ACCOUNT:'|| vnewacc,
+                                       '202',
+                                       1,
+                                       LTRBATCHNO,
+                                       lglobaltxnno,
+                                       '',
+                                       '',
+                                       '',
+                                       LTRDEFID,
+                                       '',
+                                       '',
+                                       1,
+                                       1,
+                                       'GENERALLEDGER',
+                                       'SYSTEM',
+                                       NULL,
+                                       NULL,
+                                       SYSDATE,
+                                       'SYSTEM',
+                                       NULL,
+                                       NULL,
+                                       LTRNO,
+                                       LGLTXNCODE); 
+                                       
+        GL_TXN_CORE.DO_COMMON_GL_TXN     (0,
+                                       get_current_date,
+                                       0,
+                                       lprovamt,
+                                       lpayablegl,
+                                       'PROVISION FOR ACCOUNT:'|| vnewacc,
+                                       '102',
+                                       1,
+                                       LTRBATCHNO,
+                                       lglobaltxnno,
+                                       '',
+                                       '',
+                                       '',
+                                       LTRDEFID,
+                                       '',
+                                       '',
+                                       1,
+                                       1,
+                                       'GENERALLEDGER',
+                                       'SYSTEM',
+                                       NULL,
+                                       NULL,
+                                       SYSDATE,
+                                       'SYSTEM',
+                                       NULL,
+                                       NULL,
+                                       LTRNO,
+                                       LGLTXNCODE);   
+                                       
+        update product set PRODISACCPOSTED='TRUE' where  PROACCID=loldacc and  upper(PRODISACCPOSTED)='FALSE';
+        
+        update slab_product set SP_GLPOSTED='TRUE' where  SP_ACCID=loldacc and  upper(SP_GLPOSTED)='FALSE';                                                                                    
+                                       
+        UPDATE ACCOUNT SET ACCSTATE='CLOSED',ACCCLOSINGDATE=GET_CURRENT_DATE WHERE ACCCODE=I.OLD_ACC;
+
+        UPDATE acc_transfer_treasury SET NEW_ACC=vnewacc WHERE OLD_ACC=I.OLD_ACC;
+
+        UPDATE GENERATEDACCOUNT
+            SET STATUS = 'ACTIVATED'
+          WHERE ACCNO = vnewacc;                                                              
+  
+end loop;
+
+commit;
+
+
+end;

@@ -1,0 +1,559 @@
+DROP PACKAGE TREASURY_TXN_CORE;
+
+CREATE OR REPLACE PACKAGE        TREASURY_TXN_CORE AS
+
+PROCEDURE DO_TREASURY_TXN(POPERATIONTYPE VARCHAR2,PTRAMOUNT NUMBER,PAPPUSERID VARCHAR2, POSUSERID VARCHAR2,PTERMINAL VARCHAR2,
+PNARRATION VARCHAR2, PREQUESTID VARCHAR2, PINSTRUMENTNO VARCHAR2,PINSTRUMENTDATE VARCHAR2,
+PTRDATE DATE, PVALUEDATE DATE, PBRANCHID VARCHAR2,PTRCODE VARCHAR2,PACCOUNT VARCHAR2,PISORIGINATING VARCHAR2,
+PIBTABRID VARCHAR2,
+PIBTACODE VARCHAR2,
+PADVICENUMBER VARCHAR2,PIBTAORGDATE IN date,
+PGLOBALTXN IN OUT NUMBER);
+
+
+PROCEDURE DO_TREASURY_FC_TXN(POPERATIONTYPE VARCHAR2,PTRAMOUNT_FCY NUMBER,PTRAMOUNT_LCY NUMBER,PAPPUSERID VARCHAR2, POSUSERID VARCHAR2,PTERMINAL VARCHAR2,
+PNARRATION VARCHAR2, PREQUESTID VARCHAR2, PINSTRUMENTNO VARCHAR2,PINSTRUMENTDATE VARCHAR2,
+PTRDATE DATE, PVALUEDATE DATE, PBRANCHID VARCHAR2,PTRCODE VARCHAR2,PACCOUNT VARCHAR2,PISORIGINATING VARCHAR2,
+PIBTABRID VARCHAR2,
+PIBTACODE VARCHAR2,
+PADVICENUMBER VARCHAR2,PRATE_TYPE_CODE VARCHAR2,PEXCHANGE_RATE number,
+PGLOBALTXN IN OUT NUMBER,PTR_REF_NO IN VARCHAR2);
+
+PROCEDURE CORRECT_TREASURY_TXN(PGLOBALID NUMBER);
+
+
+PROCEDURE ID_ACCOUNT_BALANCE (PACCNO   IN VARCHAR2, PDATE    IN DATE, BALANCE OUT NUMBER);
+
+END;
+/
+DROP PACKAGE BODY TREASURY_TXN_CORE;
+
+CREATE OR REPLACE PACKAGE BODY        TREASURY_TXN_CORE
+AS
+   FUNCTION GET_IBTA_ADVICE_NO
+      RETURN VARCHAR2
+   IS
+      LSEQNO           NUMBER;
+      LBANKSHORTNAME   VARCHAR2 (50);
+   BEGIN
+      SELECT SQ_IBTA_ADVICE_NO.NEXTVAL INTO LSEQNO FROM DUAL;
+
+      LBANKSHORTNAME := GET_APPCONFIGURATION_VALUE ('APP_BANK_CODE');
+
+      RETURN LBANKSHORTNAME || '-' || LSEQNO;
+   END;
+
+
+   PROCEDURE INSERT_TREASURY_TXN_RECORD (PTRAMOUNT            NUMBER,
+                                         PAPPUSERID           VARCHAR2,
+                                         POSUSERID            VARCHAR2,
+                                         PTERMINAL            VARCHAR2,
+                                         PNARRATION           VARCHAR2,
+                                         PREQUESTID           VARCHAR2,
+                                         PIBTABRANCHCODE      VARCHAR2,
+                                         PINSTRUMENTNO        VARCHAR2,
+                                         PINSTRUMENTDATE      VARCHAR2,
+                                         PTRDATE              DATE,
+                                         PVALUEDATE           DATE,
+                                         PBRANCHID            NUMBER,
+                                         PGLOBALTXNNO         NUMBER,
+                                         PTRBATCHNO           VARCHAR2,
+                                         PTRDEFCODE        IN VARCHAR2,
+                                         PACCCODE          IN VARCHAR2,
+                                         ISORIGINATING     IN NUMBER,
+                                         PIBTAADVICE       IN VARCHAR2,
+                                         PIBTATRCODE       IN VARCHAR2)
+   IS
+      LTXNID   NUMBER;
+   BEGIN
+      SELECT SQ_TREASURY_TXN_ID.NEXTVAL INTO LTXNID FROM DUAL;
+
+      INSERT INTO treasury_txn_record (TXN_ID,
+                                       TXN_REFNO,
+                                       TXN_GLOBALTXNNO,
+                                       TXN_ACCCODE,
+                                       TXN_AMOUNT,
+                                       TXN_TRDEFCODE,
+                                       TXN_BRANCHID,
+                                       TXN_IBTABRANCHID,
+                                       TXN_ISORIGINATING,
+                                       TXN_ADVICENO,
+                                       TXN_IBTA_PARTICULARS,
+                                       TXN_NARRATION,
+                                       TXN_APPUSERID,
+                                       TXN_OSUSERID,
+                                       TXN_TERMINAL)
+           VALUES (LTXNID,
+                   PREQUESTID,
+                   PGLOBALTXNNO,
+                   PACCCODE,
+                   PTRAMOUNT,
+                   PTRDEFCODE,
+                   PBRANCHID,
+                   PIBTABRANCHCODE,
+                   ISORIGINATING,
+                   PIBTAADVICE,
+                   PIBTATRCODE,
+                   PNARRATION,
+                   PAPPUSERID,
+                   POSUSERID,
+                   PTERMINAL);
+   END;
+
+   PROCEDURE DO_TRANSACTION (PTRAMOUNT            NUMBER,
+                             PAPPUSERID           VARCHAR2,
+                             POSUSERID            VARCHAR2,
+                             PTERMINAL            VARCHAR2,
+                             PNARRATION           VARCHAR2,
+                             PREQUESTID           VARCHAR2,
+                             PIBTABRANCHCODE      VARCHAR2,
+                             PINSTRUMENTNO        VARCHAR2,
+                             PINSTRUMENTDATE      VARCHAR2,
+                             PTRDATE              DATE,
+                             PVALUEDATE           DATE,
+                             PBRANCHID            NUMBER,
+                             PGLOBALTXNNO         NUMBER,
+                             PTRBATCHNO           VARCHAR2,
+                             PTRDEFCODE        IN VARCHAR2,
+                             PACCCODE          IN VARCHAR2,
+                             ISORIGINATING     IN NUMBER,
+                             PIBTAADVICE       IN VARCHAR2,
+                             PIBTATRCODE       IN VARCHAR2,
+                             PIBTAORGDATE         DATE)
+   IS
+      lacctype           VARCHAR2 (200);
+      LINITIATORMODULE   VARCHAR2 (50);
+      LTRACERNO          VARCHAR2 (20) := NULL;
+      LACTUALUSER        VARCHAR2 (50);
+      LBRCODELENGTH      NUMBER;
+      LOWNERBRID         NUMBER;
+      ltrdate            DATE;
+   BEGIN
+      ltrdate := get_current_date;
+      LBRCODELENGTH := GET_APPCONFIGURATION_VALUE ('BRANCH_CODE_DIGIT');
+
+      IF PTRAMOUNT < 0
+      THEN
+         COMMON.RAISEEXCEPTION ('Transaction amount can not be negative');
+      END IF;
+
+
+      IF PTRAMOUNT = 0
+      THEN
+         COMMON.RAISEEXCEPTION ('Transaction amount can not be zero');
+      END IF;
+
+
+      LACTUALUSER := PAPPUSERID;
+
+
+      BEGIN
+         SELECT ACTYPE
+           INTO lacctype
+           FROM VW_ALL_ACCOUNT
+          WHERE ACCNO = PACCCODE;
+      EXCEPTION
+         WHEN OTHERS
+         THEN
+            COMMON.RAISEEXCEPTION ('ACCOUNT ' || PACCCODE || ' NOT FOUND');
+      END;
+
+      IF UPPER (lacctype) = 'GL'
+      THEN
+         LOWNERBRID := PBRANCHID;
+      ELSE
+         LOWNERBRID := SUBSTR (PACCCODE, 1, LBRCODELENGTH);
+      END IF;
+
+      LINITIATORMODULE := 'TREASURY';
+
+      ALL_TXN_CORE.Do_Transaction (PTRBATCHNO,
+                                   PBRANCHID,
+                                   LOWNERBRID,
+                                   NULL,
+                                   PTRDEFCODE,
+                                   PACCCODE,
+                                   PINSTRUMENTNO,
+                                   PINSTRUMENTDATE,
+                                   PNARRATION,
+                                   PTRAMOUNT,
+                                   PGLOBALTXNNO,
+                                   LINITIATORMODULE,
+                                   LACTUALUSER,
+                                   POSUSERID,
+                                   PTERMINAL,
+                                   SYSDATE,
+                                   LACTUALUSER,
+                                   POSUSERID,
+                                   PTERMINAL,
+                                   LTRACERNO,
+                                   PIBTABRANCHCODE,
+                                   TO_CHAR (PIBTAORGDATE, 'dd/mm/rrrr'),
+                                   ISORIGINATING,
+                                   PIBTAADVICE,
+                                   PIBTATRCODE,
+                                   NULL,
+                                   ltrdate);
+
+
+      INSERT_TREASURY_TXN_RECORD (PTRAMOUNT,
+                                  PAPPUSERID,
+                                  POSUSERID,
+                                  PTERMINAL,
+                                  PNARRATION,
+                                  PREQUESTID,
+                                  PIBTABRANCHCODE,
+                                  PINSTRUMENTNO,
+                                  PINSTRUMENTDATE,
+                                  PTRDATE,
+                                  PVALUEDATE,
+                                  PBRANCHID,
+                                  PGLOBALTXNNO,
+                                  PTRBATCHNO,
+                                  PTRDEFCODE,
+                                  PACCCODE,
+                                  ISORIGINATING,
+                                  PIBTAADVICE,
+                                  PIBTATRCODE);
+   END DO_TRANSACTION;
+
+   FUNCTION GET_BRANCHID (PBR_ID NUMBER)
+      RETURN NUMBER
+   IS
+      LBID   NUMBER;
+   BEGIN
+      BEGIN
+         SELECT BID
+           INTO LBID
+           FROM BRANCH
+          WHERE BID = PBR_ID;
+      EXCEPTION
+         WHEN NO_DATA_FOUND
+         THEN
+            COMMON.RAISEEXCEPTION ('Invalid branch code ' || PBR_ID);
+            LBID := 1;
+      END;
+
+      RETURN LBID;
+   END;
+
+   PROCEDURE DO_TREASURY_TXN (POPERATIONTYPE           VARCHAR2,
+                              PTRAMOUNT                NUMBER,
+                              PAPPUSERID               VARCHAR2,
+                              POSUSERID                VARCHAR2,
+                              PTERMINAL                VARCHAR2,
+                              PNARRATION               VARCHAR2,
+                              PREQUESTID               VARCHAR2,
+                              PINSTRUMENTNO            VARCHAR2,
+                              PINSTRUMENTDATE          VARCHAR2,
+                              PTRDATE                  DATE,
+                              PVALUEDATE               DATE,
+                              PBRANCHID                VARCHAR2,
+                              PTRCODE                  VARCHAR2,
+                              PACCOUNT                 VARCHAR2,
+                              PISORIGINATING           VARCHAR2,
+                              PIBTABRID                VARCHAR2,
+                              PIBTACODE                VARCHAR2,
+                              PADVICENUMBER            VARCHAR2,
+                              PIBTAORGDATE      IN     DATE,
+                              PGLOBALTXN        IN OUT NUMBER)
+   IS
+      v_globaltxno    NUMBER;
+      v_batchno       VARCHAR2 (50);
+      ladviceno       VARCHAR2 (100);
+      ltrdate         DATE;
+      LBRANCHID       NUMBER;
+      LIBTABRANCHID   NUMBER;
+   BEGIN
+      --common.raiseexception('error');
+      IF PGLOBALTXN = 0
+      THEN
+         BEGIN
+            v_globaltxno := get_GlobalTxnNo ();
+            PGLOBALTXN := v_globaltxno;
+         EXCEPTION
+            WHEN OTHERS
+            THEN
+               COMMON.RAISEEXCEPTION ('Voucher number not generated');
+         END;
+      ELSE
+         v_globaltxno := PGLOBALTXN;
+      END IF;
+
+      --common.RAISEEXCEPTION(PBRANCHID);
+      LBRANCHID := GET_BRANCHID (PBRANCHID);
+
+      IF PIBTABRID IS NOT NULL
+      THEN
+         LIBTABRANCHID := GET_BRANCHID (PIBTABRID);
+      END IF;
+
+      --BEGIN
+      --PUBLIC_TRANSACTION.GETAUTOGENBATCHNO(v_batchno);
+      ALL_TXN_CORE.GETAUTOGENBATCHNO (1, v_batchno);
+      --EXCEPTION WHEN OTHERS THEN
+      --COMMON.RAISEEXCEPTION('BATCH NOT GENERATED, PLEASE CHECK');
+      --END ;
+
+      ltrdate := get_current_date;
+
+
+      DO_TRANSACTION (PTRAMOUNT,
+                      PAPPUSERID,
+                      POSUSERID,
+                      PTERMINAL,
+                      PNARRATION,
+                      PREQUESTID,
+                      LIBTABRANCHID,
+                      PINSTRUMENTNO,
+                      PINSTRUMENTDATE,
+                      PTRDATE,
+                      PVALUEDATE,
+                      LBRANCHID,
+                      V_GLOBALTXNO,
+                      V_BATCHNO,
+                      PTRCODE,
+                      PACCOUNT,
+                      PISORIGINATING,
+                      PADVICENUMBER,
+                      PIBTACODE,
+                      PIBTAORGDATE);
+   END DO_TREASURY_TXN;
+
+
+   PROCEDURE DO_TREASURY_FC_TXN (POPERATIONTYPE           VARCHAR2,
+                                 PTRAMOUNT_FCY            NUMBER,
+                                 PTRAMOUNT_LCY            NUMBER,
+                                 PAPPUSERID               VARCHAR2,
+                                 POSUSERID                VARCHAR2,
+                                 PTERMINAL                VARCHAR2,
+                                 PNARRATION               VARCHAR2,
+                                 PREQUESTID               VARCHAR2,
+                                 PINSTRUMENTNO            VARCHAR2,
+                                 PINSTRUMENTDATE          VARCHAR2,
+                                 PTRDATE                  DATE,
+                                 PVALUEDATE               DATE,
+                                 PBRANCHID                VARCHAR2,
+                                 PTRCODE                  VARCHAR2,
+                                 PACCOUNT                 VARCHAR2,
+                                 PISORIGINATING           VARCHAR2,
+                                 PIBTABRID                VARCHAR2,
+                                 PIBTACODE                VARCHAR2,
+                                 PADVICENUMBER            VARCHAR2,
+                                 PRATE_TYPE_CODE          VARCHAR2,
+                                 PEXCHANGE_RATE           NUMBER,
+                                 PGLOBALTXN        IN OUT NUMBER,
+                                 PTR_REF_NO        IN     VARCHAR2)
+   IS
+      LTRID              NUMBER;
+      LTRDATE            DATE;
+      LBRCODELENGTH      NUMBER;
+      LACTUALUSER        VARCHAR2 (100);
+      LACCTYPE           VARCHAR2 (100);
+      LCUR_ID            VARCHAR2 (10);
+      V_BATCHNO          VARCHAR2 (100);
+      V_GLOBALTXNO       NUMBER;
+      LTRACERNO          NUMBER;
+      LDEBITAMT_CCY      NUMBER;
+      LDEBITAMT_LCY      NUMBER;
+      LCREDITAMT_CCY     NUMBER;
+      LCREDITAMT_LCY     NUMBER;
+      LOWNERBRID         NUMBER;
+      LINITIATORMODULE   VARCHAR2 (100);
+      LBRANCHID          NUMBER;
+      LIBTABRANCHID      NUMBER;
+   BEGIN
+      LTRDATE := GET_CURRENT_DATE;
+      LBRCODELENGTH := GET_APPCONFIGURATION_VALUE ('BRANCH_CODE_DIGIT');
+
+      IF PTRAMOUNT_FCY < 0
+      THEN
+         COMMON.RAISEEXCEPTION ('Transaction amount can not be negative');
+      END IF;
+
+
+      IF PTRAMOUNT_FCY = 0
+      THEN
+         COMMON.RAISEEXCEPTION ('Transaction amount can not be zero');
+      END IF;
+
+
+      LACTUALUSER := 'TREASURY';
+
+
+      BEGIN
+         SELECT ACTYPE
+           INTO lacctype
+           FROM VW_ALL_ACCOUNT
+          WHERE ACCNO = PACCOUNT;
+      EXCEPTION
+         WHEN OTHERS
+         THEN
+            --COMMON.RAISEEXCEPTION('ACCOUNT '||PACCCODE||' NOT FOUND');
+            LACCTYPE := '';
+      END;
+
+      /*IF UPPER(lacctype)= 'GL' THEN
+          LOWNERBRID :=GET_BRANCHID(PBRANCHID);
+      ELSE
+          LOWNERBRID:= SUBSTR(PACCOUNT,1,LBRCODELENGTH);
+         -- COMMON.RAISEEXCEPTION(LOWNERBRID||' --'||lacctype||'-- '||PACCOUNT);
+      END IF;    */
+
+      LOWNERBRID := GET_BRANCHID (PBRANCHID);
+
+      LINITIATORMODULE := 'TREASURY';
+
+      BEGIN
+         SELECT TRDID
+           INTO ltrid
+           FROM transactiondefinition
+          WHERE TRDCODE = PTRCODE;
+      EXCEPTION
+         WHEN NO_DATA_FOUND
+         THEN
+            common.raiseexception ('Invalid trcode');
+      END;
+
+      BEGIN
+         SELECT ID_CURR_ID
+           INTO lcur_id
+           FROM ID_ACCOUNT
+          WHERE ID_ACC_NO = PACCOUNT;
+      EXCEPTION
+         WHEN NO_DATA_FOUND
+         THEN
+            lcur_id := '001';
+      END;
+
+
+      --PUBLIC_TRANSACTION.GETAUTOGENBATCHNO(v_batchno);
+      ALL_TXN_CORE.GETAUTOGENBATCHNO (1, v_batchno);
+
+      IF PGLOBALTXN = 0
+      THEN
+         BEGIN
+            v_globaltxno := get_GlobalTxnNo ();
+            PGLOBALTXN := v_globaltxno;
+         EXCEPTION
+            WHEN OTHERS
+            THEN
+               COMMON.RAISEEXCEPTION ('Voucher number not generated');
+         END;
+      ELSE
+         v_globaltxno := PGLOBALTXN;
+      END IF;
+
+      --LBRANCHID :=GET_BRANCHID(PBRANCHID);
+      IF PIBTABRID IS NOT NULL
+      THEN
+         LIBTABRANCHID := GET_BRANCHID (PIBTABRID);
+      END IF;
+
+      IF (SUBSTR (ltrid, 1, 1) = 1)
+      THEN                                             --FOR CREDIT TO ACCOUNT
+         LDEBITAMT_CCY := 0;
+         LDEBITAMT_LCY := 0;
+         LCREDITAMT_CCY := PTRAMOUNT_FCY;
+         LCREDITAMT_LCY := PTRAMOUNT_LCY;
+      ELSIF (SUBSTR (ltrid, 1, 1) = 2)
+      THEN                                                         --DEBIT TXN
+         LDEBITAMT_CCY := PTRAMOUNT_FCY;
+         LDEBITAMT_LCY := PTRAMOUNT_LCY;
+         LCREDITAMT_CCY := 0;
+         LCREDITAMT_LCY := 0;
+      END IF;
+
+      /*if LOWNERBRID<>1 then
+          COMMON.RAISEEXCEPTION(LOWNERBRID);
+      end if;*/
+
+      FC_TRANSACTION_VERIFICATION.DO_FC_TRANSACTION (PGLOBALTXN,
+                                                     v_batchno,
+                                                     LTRACERNO,
+                                                     LOWNERBRID,
+                                                     LOWNERBRID,
+                                                     PTRCODE,
+                                                     ltrid,
+                                                     PACCOUNT,
+                                                     'V-',
+                                                     ltrdate,
+                                                     PNARRATION,
+                                                     LDEBITAMT_CCY,
+                                                     LDEBITAMT_LCY,
+                                                     LCREDITAMT_CCY,
+                                                     LCREDITAMT_LCY,
+                                                     lcur_id,
+                                                     PRATE_TYPE_CODE,
+                                                     PEXCHANGE_RATE,
+                                                     LINITIATORMODULE,
+                                                     NULL,
+                                                     NULL,
+                                                     NULL,
+                                                     NULL,
+                                                     NULL,
+                                                     LACTUALUSER,
+                                                     NULL,
+                                                     NULL,
+                                                     NULL,
+                                                     LACTUALUSER,
+                                                     NULL,
+                                                     NULL,
+                                                     PVALUEDATE,
+                                                     PTR_REF_NO,
+                                                     NULL);
+   END;
+
+   PROCEDURE CORRECT_TREASURY_TXN (PGLOBALID NUMBER)
+   IS
+   BEGIN
+      ALL_TXN_CORE.CORRECT_TXN_BY_GLOBALID (PGLOBALID,
+                                            'TREASURY',
+                                            'admin',
+                                            NULL,
+                                            NULL,
+                                            NULL,
+                                            NULL,
+                                            NULL,
+                                            NULL);
+   END;
+
+
+   PROCEDURE ID_ACCOUNT_BALANCE (PACCNO    IN     VARCHAR2,
+                                 PDATE     IN     DATE,
+                                 BALANCE      OUT NUMBER)
+   IS
+      VCURRENT_DATE   DATE;
+   BEGIN
+      VCURRENT_DATE := GET_CURRENT_DATE;
+
+      IF VCURRENT_DATE = PDATE
+      THEN
+         BEGIN
+            SELECT ID_BALANCE_CCY
+              INTO BALANCE
+              FROM ID_ACCOUNT
+             WHERE ID_ACC_NO = PACCNO;
+         EXCEPTION
+            WHEN OTHERS
+            THEN
+               BALANCE := 0;
+         END;
+      ELSE
+         BEGIN
+            SELECT SUM (FCT_DEBIT_AMT_CCY) - SUM (FCT_CREDIT_AMT_CCY)
+              INTO BALANCE
+              FROM FC_TRANSACTION_RECORD
+             WHERE     UPPER (FCT_TRN_ISVALID_YN) <> 'FALSE'
+                   AND FCT_ACCNO = PACCNO
+                   AND FCT_TRN_DATE = PDATE
+                   AND FCT_TRDID <> 130001;
+         EXCEPTION
+            WHEN OTHERS
+            THEN
+               BALANCE := 0;
+         END;
+      END IF;
+   END;
+END;
+/

@@ -1,0 +1,28 @@
+--------------------------Run the below query in ABABIL Core and take insert script with replace table name 'CONV_ID_ACCOUNTS'--------------
+
+SELECT  ID_ACC_NM NAME,
+       ID_ACC_NO ACCNO,
+       ID_ACC_OPEN_DATE OPENDATE,
+       GET_CURR_SHORT_NAME(ID_CURR_ID) CURRENCY_ID,
+       ID_BALANCE_CCY BALANCECCY,
+       ID_BALANCE_LCY BALANCELCY,
+       NOSTRO_ACC NOSTROACCOUNTNUMBER,
+       PROD_ID
+  FROM ID_ACCOUNT
+ WHERE NVL (ID_STATUS, 'ACTIVE') = 'ACTIVE'
+
+
+-------------------------------Treasury Branches Data generate from ABABIL------------
+--------------------Replace '11' with SEQ_BRANCH_ID.NEXTVAL---------------------------
+/*SELECT '11' ID,
+       BADDRESS BRANCHADDRESS,
+       '10' BRANCHCODE,
+       CASE WHEN BISHEADOFFICE = 'TRUE' THEN 'HEAD OFFICE' ELSE 'GENERAL' END
+          BRANCHTYPE,
+       BBROUTINGNO CBBRANCHCODE,
+       BNAME NAME,
+       '1' INSTITUTEID,
+       BID CBSBRID
+  FROM branch
+  order by BID;*/
+
